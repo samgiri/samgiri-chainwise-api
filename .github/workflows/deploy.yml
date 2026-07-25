@@ -68,6 +68,21 @@ jobs:
           echo "$resp" | grep -q '"success":true' || (echo "FAIL: subscribe did not succeed" && exit 1)
           echo "PASS: subscribe endpoint"
 
+      - name: Test - analyze endpoint
+        run: |
+          resp=$(curl -sS -m 10 -w "\n%{time_total}" -X POST https://chainwise-api-production.vercel.app/api/analyze \
+            -H "Content-Type: application/json" \
+            -d '{"protocol_address":"0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48","chain":"ethereum"}')
+          body=$(echo "$resp" | head -n -1)
+          time_total=$(echo "$resp" | tail -n 1)
+          echo "$body"
+          echo "response time: ${time_total}s"
+          echo "$body" | grep -q '"risk_score"' || (echo "FAIL: analyze response missing risk_score" && exit 1)
+          echo "$body" | grep -q '"classification"' || (echo "FAIL: analyze response missing classification" && exit 1)
+          echo "$body" | grep -q '"layers"' || (echo "FAIL: analyze response missing layers breakdown" && exit 1)
+          awk -v t="$time_total" 'BEGIN { exit !(t < 5) }' || (echo "FAIL: response time ${time_total}s exceeded 5s budget" && exit 1)
+          echo "PASS: analyze endpoint"
+
       - name: Test - rate limiting (11 requests in a burst)
         run: |
           statuses=""

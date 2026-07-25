@@ -3,6 +3,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import healthRoutes from './routes/health';
 import subscribeRoutes from './routes/subscribe';
+import analyzeRoutes from './routes/analyze';
 import { rateLimit, errorHandler } from './middleware';
 
 dotenv.config();
@@ -20,6 +21,7 @@ app.use(rateLimit(10, 60000));
 
 app.use('/api', healthRoutes);
 app.use('/api', subscribeRoutes);
+app.use('/api', analyzeRoutes);
 
 app.use(errorHandler);
 
