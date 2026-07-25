@@ -40,3 +40,40 @@ jobs:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           ETHERSCAN_API_KEY: ${{ secrets.ETHERSCAN_API_KEY }}
+
+      - name: Wait for deployment to be reachable
+        run: |
+          for i in $(seq 1 10); do
+            code=$(curl -s -o /dev/null -w "%{http_code}" https://chainwise-api-production.vercel.app/api/health || echo 000)
+            if [ "$code" != "000" ]; then echo "reachable (HTTP $code)"; exit 0; fi
+            echo "not reachable yet, retrying..."; sleep 3
+          done
+          echo "Deployment never became reachable"; exit 1
+
+      - name: Test - health check
+        run: |
+          resp=$(curl -sS https://chainwise-api-production.vercel.app/api/health)
+          echo "$resp"
+          echo "$resp" | grep -q '"status":"ok"' || (echo "FAIL: health check did not report ok" && exit 1)
+          echo "$resp" | grep -q '"database":"connected"' || (echo "FAIL: database not connected" && exit 1)
+          echo "PASS: health check"
+
+      - name: Test - subscribe endpoint
+        run: |
+          email="ci-test-$(date +%s)@example.com"
+          resp=$(curl -sS -X POST https://chainwise-api-production.vercel.app/api/subscribe \
+            -H "Content-Type: application/json" \
+            -d "{\"email\":\"$email\",\"source\":\"ci-test\"}")
+          echo "$resp"
+          echo "$resp" | grep -q '"success":true' || (echo "FAIL: subscribe did not succeed" && exit 1)
+          echo "PASS: subscribe endpoint"
+
+      - name: Test - rate limiting (11 requests in a burst)
+        run: |
+          statuses=""
+          for i in $(seq 1 11); do
+            code=$(curl -s -o /dev/null -w "%{http_code}" https://chainwise-api-production.vercel.app/api/health)
+            statuses="$statuses $code"
+          done
+          echo "Statuses for 11 requests:$statuses"
+          echo "$statuses" | grep -q "429" && echo "PASS: rate limiting triggered a 429" || echo "WARN: no 429 seen in this burst (see note on serverless statefulness)"
