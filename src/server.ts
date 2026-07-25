@@ -25,7 +25,12 @@ app.use(express.json());
 // Scoped to /api only: the Telegram webhook is authenticated via a secret token
 // instead, and a per-IP limiter would be meaningless there anyway since every
 // user's messages arrive from Telegram's own servers under the same source IP.
-app.use('/api', rateLimit(10, 60000));
+//
+// Raised from the original 10/min now that both the REST API and two published
+// SDKs share this one budget per client IP -- 10 was a reasonable placeholder
+// for a single client hitting a single endpoint, not for the combined legitimate
+// traffic of REST callers, JS SDK users, and Python SDK users on one IP.
+app.use('/api', rateLimit(20, 60000));
 
 app.use('/api', healthRoutes);
 app.use('/api', subscribeRoutes);

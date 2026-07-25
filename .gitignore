@@ -6,3 +6,9 @@ dist/
 .DS_Store
 coverage/
 .vercel
+
+# Python SDK build artifacts
+__pycache__/
+*.egg-info/
+build/
+*.pyc

@@ -17,6 +17,11 @@ jobs:
         with:
           node-version: 20
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
       - name: Install dependencies
         run: npm ci
 
@@ -116,7 +121,7 @@ jobs:
         run: |
           # Single request covers array shape, pagination, chain filtering, and locating
           # the seeded case (it's on "ethereum") all at once, to stay well under the
-          # 10-req/min global rate limit shared across every test step in this job.
+          # 20-req/min global rate limit shared across every test step in this job.
           resp=$(curl -sS "https://chainwise-api-production.vercel.app/api/cases?chain=ethereum&limit=5")
           echo "$resp"
           echo "$resp" | jq -e '.cases | type == "array"' >/dev/null || (echo "FAIL: cases is not an array" && exit 1)
@@ -183,6 +188,31 @@ jobs:
           echo "PASS: webhook auth + command handling"
         env:
           WEBHOOK_SECRET: ${{ secrets.WEBHOOK_SECRET }}
+
+      - name: Test - JavaScript SDK (build + examples against live API)
+        run: |
+          cd sdk-js
+          npm ci
+          npm run build
+          echo "-- analyze.js --"
+          node examples/analyze.js
+          echo "-- list-cases.js --"
+          node examples/list-cases.js
+          echo "-- subscribe.js --"
+          TEST_EMAIL="ci-js-sdk-$(date +%s)@example.com" node examples/subscribe.js
+          echo "PASS: JavaScript SDK"
+
+      - name: Test - Python SDK (install + examples against live API)
+        run: |
+          cd sdk-py
+          pip install -e .
+          echo "-- analyze.py --"
+          python examples/analyze.py
+          echo "-- list_cases.py --"
+          python examples/list_cases.py
+          echo "-- subscribe.py --"
+          TEST_EMAIL="ci-py-sdk-$(date +%s)@example.com" python examples/subscribe.py
+          echo "PASS: Python SDK"
 
       - name: Test - rate limiting (11 requests in a burst)
         run: |
