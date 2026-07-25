@@ -118,6 +118,8 @@ jobs:
           grep -qi "swagger" /tmp/docs.html || (echo "FAIL: /docs response doesn't look like Swagger UI" && exit 1)
 
           spec=$(curl -sS "https://chainwise-api-production.vercel.app/openapi.json")
+          echo "$spec" | head -c 500
+          echo
           echo "$spec" | jq -e '.info.title == "ChainWise API"' >/dev/null || (echo "FAIL: openapi.json malformed or wrong title" && exit 1)
           echo "$spec" | jq -e '.paths."/api/cases" != null and .paths."/api/analyze" != null' >/dev/null || (echo "FAIL: openapi.json missing documented paths" && exit 1)
           echo "PASS: Swagger docs + openapi.json"
