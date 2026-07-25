@@ -83,6 +83,45 @@ jobs:
           awk -v t="$time_total" 'BEGIN { exit !(t < 5) }' || (echo "FAIL: response time ${time_total}s exceeded 5s budget" && exit 1)
           echo "PASS: analyze endpoint"
 
+      - name: Test - cases list endpoint (pagination + chain filter)
+        run: |
+          resp=$(curl -sS "https://chainwise-api-production.vercel.app/api/cases?limit=5")
+          echo "$resp"
+          echo "$resp" | jq -e '.cases | type == "array"' >/dev/null || (echo "FAIL: cases is not an array" && exit 1)
+          echo "$resp" | jq -e '.pagination.limit == 5' >/dev/null || (echo "FAIL: pagination.limit mismatch" && exit 1)
+          case_id=$(echo "$resp" | jq -r '.cases[] | select(.protocol_name == "Example Protocol Zeta") | .id' | head -n1)
+          if [ -z "$case_id" ]; then echo "FAIL: seeded case study not found in list"; exit 1; fi
+          echo "SEEDED_CASE_ID=$case_id" >> "$GITHUB_ENV"
+
+          filtered=$(curl -sS "https://chainwise-api-production.vercel.app/api/cases?chain=ethereum&limit=10")
+          echo "$filtered" | jq -e '[.cases[].chain] | all(. == "ethereum")' >/dev/null || (echo "FAIL: chain filter returned non-ethereum results" && exit 1)
+          echo "PASS: cases list endpoint (seeded case id=$case_id, pagination + chain filter OK)"
+
+      - name: Test - case detail endpoint
+        run: |
+          resp=$(curl -sS "https://chainwise-api-production.vercel.app/api/cases/${SEEDED_CASE_ID}")
+          echo "$resp" | head -c 400
+          echo
+          echo "$resp" | jq -e '.risk_score == 95' >/dev/null || (echo "FAIL: risk_score mismatch" && exit 1)
+          echo "$resp" | jq -e '.classification == "MLM Pyramid Scheme"' >/dev/null || (echo "FAIL: classification mismatch" && exit 1)
+          echo "$resp" | jq -e '.case_study_html != null' >/dev/null || (echo "FAIL: missing case_study_html" && exit 1)
+          echo "$resp" | jq -e '.analysis != null' >/dev/null || (echo "FAIL: missing analysis breakdown" && exit 1)
+
+          code=$(curl -s -o /dev/null -w "%{http_code}" "https://chainwise-api-production.vercel.app/api/cases/999999999")
+          [ "$code" = "404" ] || (echo "FAIL: expected 404 for nonexistent case, got $code" && exit 1)
+          echo "PASS: case detail endpoint (found + 404 for missing)"
+
+      - name: Test - Swagger docs + openapi.json
+        run: |
+          code=$(curl -s -o /tmp/docs.html -w "%{http_code}" "https://chainwise-api-production.vercel.app/docs")
+          [ "$code" = "200" ] || (echo "FAIL: /docs returned $code" && exit 1)
+          grep -qi "swagger" /tmp/docs.html || (echo "FAIL: /docs response doesn't look like Swagger UI" && exit 1)
+
+          spec=$(curl -sS "https://chainwise-api-production.vercel.app/openapi.json")
+          echo "$spec" | jq -e '.info.title == "ChainWise API"' >/dev/null || (echo "FAIL: openapi.json malformed or wrong title" && exit 1)
+          echo "$spec" | jq -e '.paths."/api/cases" != null and .paths."/api/analyze" != null' >/dev/null || (echo "FAIL: openapi.json missing documented paths" && exit 1)
+          echo "PASS: Swagger docs + openapi.json"
+
       - name: Test - rate limiting (11 requests in a burst)
         run: |
           statuses=""
