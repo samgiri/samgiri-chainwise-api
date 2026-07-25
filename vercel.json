@@ -11,10 +11,5 @@
       "src": "/(.*)",
       "dest": "src/server.ts"
     }
-  ],
-  "env": {
-    "DATABASE_URL": "@database_url",
-    "SENDGRID_API_KEY": "@sendgrid_api_key",
-    "ETHERSCAN_API_KEY": "@etherscan_api_key"
-  }
+  ]
 }
