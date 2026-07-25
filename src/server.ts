@@ -6,6 +6,7 @@ import subscribeRoutes from './routes/subscribe';
 import analyzeRoutes from './routes/analyze';
 import casesRoutes from './routes/cases';
 import docsRoutes from './routes/docs';
+import webhookRoutes from './routes/webhook';
 import { rateLimit, errorHandler } from './middleware';
 import { seedCaseStudies } from './services/seed';
 
@@ -20,13 +21,18 @@ app.use(
   })
 );
 app.use(express.json());
-app.use(rateLimit(10, 60000));
+
+// Scoped to /api only: the Telegram webhook is authenticated via a secret token
+// instead, and a per-IP limiter would be meaningless there anyway since every
+// user's messages arrive from Telegram's own servers under the same source IP.
+app.use('/api', rateLimit(10, 60000));
 
 app.use('/api', healthRoutes);
 app.use('/api', subscribeRoutes);
 app.use('/api', analyzeRoutes);
 app.use('/api', casesRoutes);
 app.use('/', docsRoutes);
+app.use('/webhook', webhookRoutes);
 
 app.use(errorHandler);
 

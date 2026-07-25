@@ -30,16 +30,29 @@ jobs:
 
       - name: Deploy to production
         run: |
-          npx --yes vercel@latest deploy --prod --yes --token="$VERCEL_TOKEN" \
-            --env DATABASE_URL="$DATABASE_URL" \
-            --env ETHERSCAN_API_KEY="$ETHERSCAN_API_KEY" \
-            --env CORS_ORIGIN="https://thechainwise.com" \
-            --env FRONTEND_URL="https://thechainwise.com" \
+          ENV_FLAGS=(
+            --env DATABASE_URL="$DATABASE_URL"
+            --env ETHERSCAN_API_KEY="$ETHERSCAN_API_KEY"
+            --env CORS_ORIGIN="https://thechainwise.com"
+            --env FRONTEND_URL="https://thechainwise.com"
             --env NODE_ENV="production"
+          )
+          # Telegram credentials are added by the user after creating a bot via
+          # BotFather, so they may not exist as GitHub secrets yet -- skip them
+          # rather than passing an empty --env value, which the Vercel CLI rejects.
+          if [ -n "$TELEGRAM_BOT_TOKEN" ]; then
+            ENV_FLAGS+=(--env TELEGRAM_BOT_TOKEN="$TELEGRAM_BOT_TOKEN")
+          fi
+          if [ -n "$WEBHOOK_SECRET" ]; then
+            ENV_FLAGS+=(--env WEBHOOK_SECRET="$WEBHOOK_SECRET")
+          fi
+          npx --yes vercel@latest deploy --prod --yes --token="$VERCEL_TOKEN" "${ENV_FLAGS[@]}"
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           ETHERSCAN_API_KEY: ${{ secrets.ETHERSCAN_API_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          WEBHOOK_SECRET: ${{ secrets.WEBHOOK_SECRET }}
 
       - name: Wait for deployment to be reachable
         run: |
@@ -49,6 +62,22 @@ jobs:
             echo "not reachable yet, retrying..."; sleep 3
           done
           echo "Deployment never became reachable"; exit 1
+
+      - name: Configure Telegram webhook
+        run: |
+          if [ -z "$TELEGRAM_BOT_TOKEN" ]; then
+            echo "TELEGRAM_BOT_TOKEN not set yet -- skipping webhook registration until a bot is created via BotFather"
+            exit 0
+          fi
+          resp=$(curl -sS "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/setWebhook" \
+            -d "url=https://chainwise-api-production.vercel.app/webhook/telegram" \
+            -d "secret_token=${WEBHOOK_SECRET}")
+          echo "$resp"
+          echo "$resp" | jq -e '.ok == true' >/dev/null || (echo "FAIL: setWebhook failed" && exit 1)
+          echo "PASS: Telegram webhook configured"
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          WEBHOOK_SECRET: ${{ secrets.WEBHOOK_SECRET }}
 
       - name: Test - health check
         run: |
@@ -127,6 +156,33 @@ jobs:
           echo "$spec" | jq -e '.info.title == "ChainWise API"' >/dev/null || (echo "FAIL: openapi.json malformed or wrong title" && exit 1)
           echo "$spec" | jq -e '.paths."/api/cases" != null and .paths."/api/analyze" != null' >/dev/null || (echo "FAIL: openapi.json missing documented paths" && exit 1)
           echo "PASS: Swagger docs + openapi.json"
+
+      - name: Test - Telegram webhook auth + command handling
+        run: |
+          if [ -z "$WEBHOOK_SECRET" ]; then
+            echo "WEBHOOK_SECRET not set yet -- skipping webhook tests"
+            exit 0
+          fi
+
+          # Unauthorized request must be rejected regardless of body.
+          code=$(curl -s -o /dev/null -w "%{http_code}" -X POST "https://chainwise-api-production.vercel.app/webhook/telegram" \
+            -H "Content-Type: application/json" \
+            -d '{"message":{"chat":{"id":1},"text":"/help"}}')
+          [ "$code" = "401" ] || (echo "FAIL: expected 401 without secret header, got $code" && exit 1)
+
+          # Authorized synthetic Telegram update should be accepted and processed.
+          # chat.id 1 isn't a real chat, so the bot's downstream sendMessage call to
+          # Telegram will itself fail (logged server-side, not surfaced here) -- this
+          # only verifies our webhook's own auth + parsing, since a real end-to-end
+          # reply requires an actual Telegram conversation this CI environment can't provide.
+          code2=$(curl -s -o /dev/null -w "%{http_code}" -X POST "https://chainwise-api-production.vercel.app/webhook/telegram" \
+            -H "Content-Type: application/json" \
+            -H "X-Telegram-Bot-Api-Secret-Token: $WEBHOOK_SECRET" \
+            -d '{"message":{"chat":{"id":1},"text":"/help"}}')
+          [ "$code2" = "200" ] || (echo "FAIL: expected 200 for authorized synthetic update, got $code2" && exit 1)
+          echo "PASS: webhook auth + command handling"
+        env:
+          WEBHOOK_SECRET: ${{ secrets.WEBHOOK_SECRET }}
 
       - name: Test - rate limiting (11 requests in a burst)
         run: |
