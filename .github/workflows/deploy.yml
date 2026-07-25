@@ -113,7 +113,7 @@ jobs:
 
       - name: Test - Swagger docs + openapi.json
         run: |
-          code=$(curl -s -o /tmp/docs.html -w "%{http_code}" "https://chainwise-api-production.vercel.app/docs")
+          code=$(curl -sL -o /tmp/docs.html -w "%{http_code}" "https://chainwise-api-production.vercel.app/docs")
           [ "$code" = "200" ] || (echo "FAIL: /docs returned $code" && exit 1)
           grep -qi "swagger" /tmp/docs.html || (echo "FAIL: /docs response doesn't look like Swagger UI" && exit 1)
 
