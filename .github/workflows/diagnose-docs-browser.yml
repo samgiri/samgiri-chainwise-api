@@ -1,0 +1,76 @@
+name: Diagnose docs endpoint (real browser)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/diagnose-docs-browser.yml'
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Playwright
+        run: |
+          npm install playwright@1.48
+          npx playwright install --with-deps chromium
+
+      - name: Render /docs and capture console + errors
+        run: |
+          cat > check.js << 'EOF'
+          const { chromium } = require('playwright');
+
+          (async () => {
+            const browser = await chromium.launch();
+            const page = await browser.newPage();
+
+            page.on('console', msg => console.log(`[console.${msg.type()}] ${msg.text()}`));
+            page.on('pageerror', err => console.log(`[pageerror] ${err.toString()}`));
+            page.on('requestfailed', req => console.log(`[requestfailed] ${req.url()} - ${req.failure()?.errorText}`));
+            page.on('response', resp => {
+              if (resp.url().includes('/docs') || resp.url().includes('swagger') || resp.url().includes('openapi')) {
+                console.log(`[response] ${resp.status()} ${resp.url()}`);
+              }
+            });
+
+            const resp = await page.goto('https://samgiri-chainwise-api.vercel.app/docs', { waitUntil: 'networkidle', timeout: 30000 });
+            console.log('Final HTTP status:', resp.status());
+            console.log('Final URL:', page.url());
+
+            await page.waitForTimeout(3000);
+
+            const swaggerUiInfo = await page.evaluate(() => {
+              const el = document.getElementById('swagger-ui');
+              return {
+                exists: !!el,
+                innerHTMLLength: el ? el.innerHTML.length : -1,
+                innerHTMLSnippet: el ? el.innerHTML.slice(0, 300) : null,
+                bodyText: document.body.innerText.slice(0, 500),
+              };
+            });
+            console.log('swagger-ui div info:', JSON.stringify(swaggerUiInfo, null, 2));
+
+            const title = await page.title();
+            console.log('Page title:', title);
+
+            await page.screenshot({ path: 'docs-screenshot.png', fullPage: true });
+            await browser.close();
+          })().catch(e => {
+            console.log('SCRIPT ERROR:', e.toString());
+            process.exit(1);
+          });
+          EOF
+          node check.js
+
+      - name: Upload screenshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: docs-screenshot
+          path: docs-screenshot.png
+          retention-days: 3
