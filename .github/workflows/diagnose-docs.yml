@@ -12,25 +12,16 @@ jobs:
     steps:
       - name: Check samgiri-chainwise-api.vercel.app
         run: |
-          echo "--- /docs ---"
-          curl -sS -D - -o /tmp/docs_body.html "https://samgiri-chainwise-api.vercel.app/docs" || true
-          echo "--- body (first 2000 chars) ---"
-          head -c 2000 /tmp/docs_body.html || true
+          echo "--- /docs/ (following redirect, full body) ---"
+          curl -sS -D - -L "https://samgiri-chainwise-api.vercel.app/docs/" -o /tmp/docs_slash.html || true
+          echo "--- body length ---"
+          wc -c /tmp/docs_slash.html || true
+          echo "--- full body ---"
+          cat /tmp/docs_slash.html || true
           echo
-          echo "--- /openapi.json ---"
-          curl -sS -D - -o /tmp/openapi_body.json "https://samgiri-chainwise-api.vercel.app/openapi.json" || true
-          head -c 1000 /tmp/openapi_body.json || true
-          echo
+          echo "--- swagger-ui asset check ---"
+          curl -sS -o /dev/null -w "swagger-ui-bundle.js: %{http_code}\n" "https://samgiri-chainwise-api.vercel.app/docs/swagger-ui-bundle.js" || true
+          curl -sS -o /dev/null -w "swagger-ui.css: %{http_code}\n" "https://samgiri-chainwise-api.vercel.app/docs/swagger-ui.css" || true
           echo "--- /api/health ---"
-          curl -sS -D - -o /tmp/health_body.json "https://samgiri-chainwise-api.vercel.app/api/health" || true
-          cat /tmp/health_body.json || true
-
-      - name: Check chainwise-api-production.vercel.app for comparison
-        run: |
-          echo "--- /docs ---"
-          curl -sS -D - -o /tmp/docs_body2.html -L "https://chainwise-api-production.vercel.app/docs" || true
-          echo "--- body (first 500 chars) ---"
-          head -c 500 /tmp/docs_body2.html || true
+          curl -sS "https://samgiri-chainwise-api.vercel.app/api/health" || true
           echo
-          echo "--- /api/health ---"
-          curl -sS "https://chainwise-api-production.vercel.app/api/health" || true
