@@ -1,0 +1,36 @@
+name: Diagnose docs endpoint
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/diagnose-docs.yml'
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check samgiri-chainwise-api.vercel.app
+        run: |
+          echo "--- /docs ---"
+          curl -sS -D - -o /tmp/docs_body.html "https://samgiri-chainwise-api.vercel.app/docs" || true
+          echo "--- body (first 2000 chars) ---"
+          head -c 2000 /tmp/docs_body.html || true
+          echo
+          echo "--- /openapi.json ---"
+          curl -sS -D - -o /tmp/openapi_body.json "https://samgiri-chainwise-api.vercel.app/openapi.json" || true
+          head -c 1000 /tmp/openapi_body.json || true
+          echo
+          echo "--- /api/health ---"
+          curl -sS -D - -o /tmp/health_body.json "https://samgiri-chainwise-api.vercel.app/api/health" || true
+          cat /tmp/health_body.json || true
+
+      - name: Check chainwise-api-production.vercel.app for comparison
+        run: |
+          echo "--- /docs ---"
+          curl -sS -D - -o /tmp/docs_body2.html -L "https://chainwise-api-production.vercel.app/docs" || true
+          echo "--- body (first 500 chars) ---"
+          head -c 500 /tmp/docs_body2.html || true
+          echo
+          echo "--- /api/health ---"
+          curl -sS "https://chainwise-api-production.vercel.app/api/health" || true
