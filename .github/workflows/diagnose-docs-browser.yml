@@ -1,3 +1,4 @@
+# Verifying against the deployment from commit 4f0c211 (confirmed live)
 name: Diagnose docs endpoint (real browser)
 
 on:
