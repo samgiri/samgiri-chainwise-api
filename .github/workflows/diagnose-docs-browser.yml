@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/diagnose-docs-browser.yml'
+      - 'vercel.json'
 
 jobs:
   diagnose:
