@@ -6,7 +6,7 @@
     "description": "ChainWise Backend API - DeFi Risk Intelligence Platform"
   },
   "servers": [
-    { "url": "https://chainwise-api-production.vercel.app", "description": "Production" }
+    { "url": "/", "description": "Current host" }
   ],
   "paths": {
     "/api/health": {
